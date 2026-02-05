@@ -278,29 +278,35 @@ class MCPCompiler {
     return this.gifUrls?.[node.id] !== undefined;
   }
   
-  // Extract Lottie URL from node name (format: 🟢 https://app.lottiefiles.com/animation/...)
+  // Extract Lottie URL from node name
+  // Supported formats:
+  // - Direct JSON: https://assets.lottiefiles.com/packages/xxx.json
+  // - Direct lottie: https://lottie.host/xxx/xxx.lottie or https://lottie.host/xxx/xxx.json
+  // - App URL (will show placeholder): https://app.lottiefiles.com/animation/xxx
   getLottieUrl(node) {
     if (!node.name) return null;
-    // Match lottiefiles.com URLs in the node name
-    const lottieMatch = node.name.match(/https:\/\/(?:app\.)?lottiefiles\.com\/[^\s]+/i);
-    if (lottieMatch) {
-      const appUrl = lottieMatch[0];
-      // Convert app URL to JSON URL for lottie-player
-      // https://app.lottiefiles.com/animation/UUID -> https://lottie.host/UUID/animation.json
-      const uuidMatch = appUrl.match(/animation\/([a-f0-9-]+)/i);
-      if (uuidMatch) {
-        return `https://lottie.host/${uuidMatch[1]}/animation.json`;
-      }
-      return appUrl;
+    
+    // Match direct JSON/lottie URLs (these work directly)
+    const directMatch = node.name.match(/https:\/\/(?:assets\d*\.lottiefiles\.com|lottie\.host)\/[^\s]+\.(?:json|lottie)/i);
+    if (directMatch) return directMatch[0];
+    
+    // Match app.lottiefiles.com URLs (need to be converted manually by user)
+    const appMatch = node.name.match(/https:\/\/app\.lottiefiles\.com\/[^\s]+/i);
+    if (appMatch) {
+      // Return the app URL - user needs to get the actual JSON URL from LottieFiles
+      console.log(`  ⚠️  Lottie app URL detected. For animation to work, use the direct JSON/lottie URL from LottieFiles.`);
+      return appMatch[0];
     }
-    // Also check for direct lottie.host URLs
-    const hostMatch = node.name.match(/https:\/\/lottie\.host\/[^\s]+/i);
-    if (hostMatch) return hostMatch[0];
+    
     return null;
   }
   
   hasLottieFill(node) {
     return this.getLottieUrl(node) !== null;
+  }
+  
+  isDirectLottieUrl(url) {
+    return url && (url.endsWith('.json') || url.endsWith('.lottie'));
   }
   
   findNodeById(rootNode, nodeId) {
@@ -562,7 +568,20 @@ class MCPCompiler {
           const lottieUrl = this.getLottieUrl(node);
           const lottieStyle = this.translateVideoStyle(node, parentHasAutoLayout);
           console.log(`  🎭 Rendering Lottie: ${lottieUrl}`);
-          html = `${indent}<lottie-player class="${className}" data-figma-id="${node.id}" src="${lottieUrl}" background="transparent" speed="1" style="${lottieStyle}" loop autoplay></lottie-player>`;
+          
+          if (this.isDirectLottieUrl(lottieUrl)) {
+            // Direct JSON/lottie URL - use dotlottie-wc player
+            html = `${indent}<dotlottie-wc class="${className}" data-figma-id="${node.id}" src="${lottieUrl}" speed="1" style="${lottieStyle}" loop autoplay></dotlottie-wc>`;
+          } else {
+            // App URL - show placeholder with instructions
+            html = `${indent}<div class="${className} lottie-placeholder" data-figma-id="${node.id}" data-lottie-app-url="${lottieUrl}" style="${lottieStyle}; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center; position: relative;">
+${indent}  <div style="text-align: center; color: white; font-size: 12px; padding: 8px;">
+${indent}    <div style="font-size: 24px; margin-bottom: 4px;">🎬</div>
+${indent}    <div>Lottie Animation</div>
+${indent}    <div style="font-size: 10px; opacity: 0.8;">Use direct .json/.lottie URL</div>
+${indent}  </div>
+${indent}</div>`;
+          }
         } else {
           const frameStyle = this.translateAutoLayoutToCSS(node);
           const children = node.children ? 
@@ -580,7 +599,17 @@ ${indent}</div>`;
           const lottieUrl = this.getLottieUrl(node);
           const lottieStyle = this.translateVideoStyle(node, parentHasAutoLayout);
           console.log(`  🎭 Rendering Lottie: ${lottieUrl}`);
-          html = `${indent}<lottie-player class="${className}" data-figma-id="${node.id}" src="${lottieUrl}" background="transparent" speed="1" style="${lottieStyle}" loop autoplay></lottie-player>`;
+          
+          if (this.isDirectLottieUrl(lottieUrl)) {
+            html = `${indent}<dotlottie-wc class="${className}" data-figma-id="${node.id}" src="${lottieUrl}" speed="1" style="${lottieStyle}" loop autoplay></dotlottie-wc>`;
+          } else {
+            html = `${indent}<div class="${className} lottie-placeholder" data-figma-id="${node.id}" data-lottie-app-url="${lottieUrl}" style="${lottieStyle}; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); display: flex; align-items: center; justify-content: center;">
+${indent}  <div style="text-align: center; color: white; font-size: 12px; padding: 8px;">
+${indent}    <div style="font-size: 24px; margin-bottom: 4px;">🎬</div>
+${indent}    <div>Lottie</div>
+${indent}  </div>
+${indent}</div>`;
+          }
         }
         // Check if this rectangle has a GIF fill
         else if (this.hasGifFill(node)) {
@@ -1043,7 +1072,7 @@ ${indent}</div>`;
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <script src="https://unpkg.com/@lottiefiles/lottie-player@latest/dist/lottie-player.js"></script>
+    <script src="https://unpkg.com/@lottiefiles/dotlottie-wc@latest/dist/dotlottie-wc.js" type="module"></script>
     <title>Figma MCP Compiler</title>
     <style>
         body {
