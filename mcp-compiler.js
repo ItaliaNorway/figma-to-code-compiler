@@ -344,24 +344,69 @@ class MCPCompiler {
       return '';
     }
     const [start, end] = fill.gradientHandlePositions;
-    // Convert Figma gradient angle to CSS linear-gradient angle
+    // Convert Figma gradient angle to CSS angle
     // Figma uses handle positions where atan2 gives mathematical angle (0 = right, counterclockwise)
     // CSS linear-gradient: 0deg = bottom to top, 90deg = left to right, 180deg = top to bottom
-    // Formula: CSS angle = 90 - math angle (in degrees)
     const mathAngle = Math.atan2(end.y - start.y, end.x - start.x) * 180 / Math.PI;
-    const angle = Math.round(90 + mathAngle);
+    const linearAngle = Math.round(90 + mathAngle);
     
+    // Build color stops
     const stops = fill.gradientStops?.map(stop => {
       const r = Math.round(stop.color.r * 255);
       const g = Math.round(stop.color.g * 255);
       const b = Math.round(stop.color.b * 255);
       const a = stop.color.a ?? 1;
-      return `rgba(${r}, ${g}, ${b}, ${a}) ${stop.position * 100}%`;
+      return `rgba(${r}, ${g}, ${b}, ${a}) ${Math.round(stop.position * 100)}%`;
     }).join(', ');
     
-    if (fill.type === 'GRADIENT_LINEAR') return `linear-gradient(${angle}deg, ${stops})`;
-    if (fill.type === 'GRADIENT_RADIAL') return `radial-gradient(circle, ${stops})`;
-    return '';
+    // Build angular stops (for conic-gradient, positions are in degrees 0-360)
+    const angularStops = fill.gradientStops?.map(stop => {
+      const r = Math.round(stop.color.r * 255);
+      const g = Math.round(stop.color.g * 255);
+      const b = Math.round(stop.color.b * 255);
+      const a = stop.color.a ?? 1;
+      return `rgba(${r}, ${g}, ${b}, ${a}) ${Math.round(stop.position * 360)}deg`;
+    }).join(', ');
+    
+    switch (fill.type) {
+      case 'GRADIENT_LINEAR':
+        return `linear-gradient(${linearAngle}deg, ${stops})`;
+      
+      case 'GRADIENT_RADIAL':
+        return `radial-gradient(circle, ${stops})`;
+      
+      case 'GRADIENT_ANGULAR':
+        // Conic gradient - calculate starting angle from handle positions
+        // CSS conic-gradient: 0deg = top, goes clockwise
+        const conicAngle = Math.round(mathAngle + 90);
+        return `conic-gradient(from ${conicAngle}deg at 50% 50%, ${angularStops})`;
+      
+      case 'GRADIENT_DIAMOND':
+        // Diamond gradient - CSS doesn't have native diamond gradient
+        // Approximate with 4 linear gradients in each quadrant
+        const firstStop = fill.gradientStops?.[0];
+        const lastStop = fill.gradientStops?.[fill.gradientStops.length - 1];
+        if (firstStop && lastStop) {
+          const r1 = Math.round(firstStop.color.r * 255);
+          const g1 = Math.round(firstStop.color.g * 255);
+          const b1 = Math.round(firstStop.color.b * 255);
+          const a1 = firstStop.color.a ?? 1;
+          const r2 = Math.round(lastStop.color.r * 255);
+          const g2 = Math.round(lastStop.color.g * 255);
+          const b2 = Math.round(lastStop.color.b * 255);
+          const a2 = lastStop.color.a ?? 1;
+          const c1 = `rgba(${r1}, ${g1}, ${b1}, ${a1})`;
+          const c2 = `rgba(${r2}, ${g2}, ${b2}, ${a2})`;
+          return `linear-gradient(to bottom right, ${c1} 0%, ${c2} 50%) bottom right / 50% 50% no-repeat, ` +
+                 `linear-gradient(to bottom left, ${c1} 0%, ${c2} 50%) bottom left / 50% 50% no-repeat, ` +
+                 `linear-gradient(to top left, ${c1} 0%, ${c2} 50%) top left / 50% 50% no-repeat, ` +
+                 `linear-gradient(to top right, ${c1} 0%, ${c2} 50%) top right / 50% 50% no-repeat`;
+        }
+        return '';
+      
+      default:
+        return '';
+    }
   }
 
   applyEffect(effect) {
