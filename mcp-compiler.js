@@ -278,6 +278,31 @@ class MCPCompiler {
     return this.gifUrls?.[node.id] !== undefined;
   }
   
+  // Extract Lottie URL from node name (format: 🟢 https://app.lottiefiles.com/animation/...)
+  getLottieUrl(node) {
+    if (!node.name) return null;
+    // Match lottiefiles.com URLs in the node name
+    const lottieMatch = node.name.match(/https:\/\/(?:app\.)?lottiefiles\.com\/[^\s]+/i);
+    if (lottieMatch) {
+      const appUrl = lottieMatch[0];
+      // Convert app URL to JSON URL for lottie-player
+      // https://app.lottiefiles.com/animation/UUID -> https://lottie.host/UUID/animation.json
+      const uuidMatch = appUrl.match(/animation\/([a-f0-9-]+)/i);
+      if (uuidMatch) {
+        return `https://lottie.host/${uuidMatch[1]}/animation.json`;
+      }
+      return appUrl;
+    }
+    // Also check for direct lottie.host URLs
+    const hostMatch = node.name.match(/https:\/\/lottie\.host\/[^\s]+/i);
+    if (hostMatch) return hostMatch[0];
+    return null;
+  }
+  
+  hasLottieFill(node) {
+    return this.getLottieUrl(node) !== null;
+  }
+  
   findNodeById(rootNode, nodeId) {
     if (!rootNode) return null;
     if (rootNode.id === nodeId) return rootNode;
@@ -532,18 +557,33 @@ class MCPCompiler {
     
     switch (node.type) {
       case 'FRAME':
-        const frameStyle = this.translateAutoLayoutToCSS(node);
-        const children = node.children ? 
-          node.children.map(child => this.translateNodeToHTML(child, depth + 1, nodeHasAutoLayout)).join('\n') : '';
-        
-        html = `${indent}<div class="${className}" data-figma-id="${node.id}" style="${frameStyle}">
+        // Check if this frame has a Lottie animation URL in its name
+        if (this.hasLottieFill(node)) {
+          const lottieUrl = this.getLottieUrl(node);
+          const lottieStyle = this.translateVideoStyle(node, parentHasAutoLayout);
+          console.log(`  🎭 Rendering Lottie: ${lottieUrl}`);
+          html = `${indent}<lottie-player class="${className}" data-figma-id="${node.id}" src="${lottieUrl}" background="transparent" speed="1" style="${lottieStyle}" loop autoplay></lottie-player>`;
+        } else {
+          const frameStyle = this.translateAutoLayoutToCSS(node);
+          const children = node.children ? 
+            node.children.map(child => this.translateNodeToHTML(child, depth + 1, nodeHasAutoLayout)).join('\n') : '';
+          
+          html = `${indent}<div class="${className}" data-figma-id="${node.id}" style="${frameStyle}">
 ${children}
 ${indent}</div>`;
+        }
         break;
         
       case 'RECTANGLE':
+        // Check if this rectangle has a Lottie animation URL in its name
+        if (this.hasLottieFill(node)) {
+          const lottieUrl = this.getLottieUrl(node);
+          const lottieStyle = this.translateVideoStyle(node, parentHasAutoLayout);
+          console.log(`  🎭 Rendering Lottie: ${lottieUrl}`);
+          html = `${indent}<lottie-player class="${className}" data-figma-id="${node.id}" src="${lottieUrl}" background="transparent" speed="1" style="${lottieStyle}" loop autoplay></lottie-player>`;
+        }
         // Check if this rectangle has a GIF fill
-        if (this.hasGifFill(node)) {
+        else if (this.hasGifFill(node)) {
           const gifUrl = this.getGifUrl(node.id);
           const gifStyle = this.translateVideoStyle(node, parentHasAutoLayout);
           // Note: Figma API returns static image, not animated GIF
@@ -1003,6 +1043,7 @@ ${indent}</div>`;
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <script src="https://unpkg.com/@lottiefiles/lottie-player@latest/dist/lottie-player.js"></script>
     <title>Figma MCP Compiler</title>
     <style>
         body {
