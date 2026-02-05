@@ -19,6 +19,7 @@ class MCPCompiler {
     this.mcpClient = new FigmaMCPClient();
     this.imageUrls = {}; // Cache for image URLs from Figma API (fallback)
     this.svgContent = {}; // Cache for inline SVG content
+    this.videoUrls = {}; // Cache for video URLs
     this.currentFileKey = null;
   }
 
@@ -62,11 +63,12 @@ class MCPCompiler {
       }
     }
     
-    // Collect vector nodes and image fill nodes separately
+    // Collect vector nodes, image fill nodes, and video fill nodes separately
     const vectorNodeIds = [];
     const imageNodeIds = [];
-    console.log('🔍 Scanning for image/vector nodes...');
-    this.collectImageNodes(nodeToScan, vectorNodeIds, imageNodeIds);
+    const videoNodes = [];
+    console.log('🔍 Scanning for image/vector/video nodes...');
+    this.collectImageNodes(nodeToScan, vectorNodeIds, imageNodeIds, videoNodes);
     
     const token = process.env.FIGMA_ACCESS_TOKEN;
     if (!token) {
@@ -76,6 +78,7 @@ class MCPCompiler {
     
     this.svgContent = {};
     this.imageUrls = {};
+    this.videoUrls = {};
     
     // Fetch SVGs for vector nodes
     if (vectorNodeIds.length > 0) {
@@ -111,6 +114,27 @@ class MCPCompiler {
       }
     }
     
+    // First, fetch the file's images/assets to check for videos
+    let fileAssets = {};
+    try {
+      const assetsResponse = await fetch(
+        `https://api.figma.com/v1/files/${fileKey}/images`,
+        { headers: { 'X-Figma-Token': token } }
+      );
+      if (assetsResponse.ok) {
+        const assetsData = await assetsResponse.json();
+        fileAssets = assetsData.meta?.images || {};
+        console.log(`📦 Found ${Object.keys(fileAssets).length} file assets`);
+        // Log a few asset URLs to see their format
+        const assetEntries = Object.entries(fileAssets).slice(0, 3);
+        for (const [ref, url] of assetEntries) {
+          console.log(`   Asset ${ref.substring(0, 8)}...: ${url.substring(0, 80)}...`);
+        }
+      }
+    } catch (error) {
+      console.warn('⚠️  Error fetching file assets:', error.message);
+    }
+    
     // Fetch PNG for image fill nodes
     if (imageNodeIds.length > 0) {
       console.log(`🖼️  Fetching PNG for ${imageNodeIds.length} image nodes...`);
@@ -127,8 +151,34 @@ class MCPCompiler {
           
           for (const [nodeId, url] of Object.entries(imageUrls)) {
             if (url) {
-              this.imageUrls[nodeId] = url;
-              console.log(`  ✅ Got image URL for ${nodeId}`);
+              // Check if this node is named like a video
+              const nodeInfo = this.findNodeById(nodeToScan, nodeId);
+              const isVideoNode = nodeInfo && (
+                nodeInfo.name.toLowerCase().includes('video') ||
+                nodeInfo.name.toLowerCase().includes('.mp4') ||
+                nodeInfo.name.toLowerCase().includes('.webm') ||
+                nodeInfo.name.toLowerCase().includes('.mov')
+              );
+              
+              if (isVideoNode) {
+                // For video nodes, we need to check if there's a video asset
+                const imageFill = nodeInfo.fills?.find(f => f.type === 'IMAGE' && f.visible !== false);
+                if (imageFill?.imageRef) {
+                  console.log(`   Checking video asset for imageRef: ${imageFill.imageRef}`);
+                  // Check if the asset URL contains video indicators
+                  const assetUrl = fileAssets[imageFill.imageRef];
+                  if (assetUrl) {
+                    console.log(`   Asset URL: ${assetUrl.substring(0, 100)}...`);
+                  }
+                }
+                // For now, store as video placeholder - we'll need the actual video URL
+                // Figma stores video thumbnails as images, actual video needs different approach
+                this.videoUrls[nodeId] = url; // Use thumbnail for now
+                console.log(`  🎬 Detected video node: ${nodeId} (using thumbnail)`);
+              } else {
+                this.imageUrls[nodeId] = url;
+                console.log(`  ✅ Got image URL for ${nodeId}`);
+              }
             }
           }
         }
@@ -137,10 +187,22 @@ class MCPCompiler {
       }
     }
     
-    console.log(`✅ Fetched ${Object.keys(this.svgContent).length} inline SVGs, ${Object.keys(this.imageUrls).length} image URLs`);
+    // Process explicit video nodes (if any were detected with VIDEO fill type)
+    if (videoNodes.length > 0) {
+      console.log(`🎬 Processing ${videoNodes.length} video nodes...`);
+      for (const { id, node } of videoNodes) {
+        const videoFill = node.fills?.find(f => f.type === 'VIDEO' && f.visible !== false);
+        if (videoFill?.videoRef && fileAssets[videoFill.videoRef]) {
+          this.videoUrls[id] = fileAssets[videoFill.videoRef];
+          console.log(`  ✅ Got video URL for ${id}`);
+        }
+      }
+    }
+    
+    console.log(`✅ Fetched ${Object.keys(this.svgContent).length} inline SVGs, ${Object.keys(this.imageUrls).length} image URLs, ${Object.keys(this.videoUrls).length} video URLs`);
   }
   
-  collectImageNodes(node, vectorIds, imageIds, depth = 0) {
+  collectImageNodes(node, vectorIds, imageIds, videoIds, depth = 0) {
     if (!node) return;
     
     // Skip hidden nodes
@@ -154,18 +216,34 @@ class MCPCompiler {
       console.log(`  📷 Found ${node.type}: ${node.name} (${node.id})`);
     }
     
-    // Nodes with image fills (for rectangles/frames with image backgrounds)
+    // Check for image and video fills
     if (node.fills && Array.isArray(node.fills)) {
+      // Log all fill types for debugging
+      const fillTypes = node.fills.map(f => f.type).join(', ');
+      if (node.fills.length > 0 && (node.fills.some(f => f.type === 'IMAGE' || f.type === 'VIDEO'))) {
+        console.log(`     Fill types for ${node.name}: [${fillTypes}]`);
+      }
+      
       const imageFill = node.fills.find(f => f.type === 'IMAGE' && f.visible !== false);
-      if (imageFill) {
+      const videoFill = node.fills.find(f => f.type === 'VIDEO' && f.visible !== false);
+      
+      if (videoFill) {
+        videoIds.push({ id: node.id, node });
+        console.log(`  🎬 Found VIDEO fill: ${node.name} (${node.id})`);
+        if (videoFill.videoRef) console.log(`     videoRef: ${videoFill.videoRef}`);
+      } else if (imageFill) {
         imageIds.push(node.id);
-        console.log(`  �️  Found IMAGE fill: ${node.name} (${node.id})`);
+        console.log(`  🖼️  Found IMAGE fill: ${node.name} (${node.id})`);
+        // Check if this might be a video (name contains video/mp4)
+        if (node.name.toLowerCase().includes('video') || node.name.toLowerCase().includes('.mp4')) {
+          console.log(`     ⚠️  Note: This node is named like a video but has IMAGE fill type`);
+        }
       }
     }
     
     // Recurse into children
     if (node.children && Array.isArray(node.children)) {
-      node.children.forEach(child => this.collectImageNodes(child, vectorIds, imageIds, depth + 1));
+      node.children.forEach(child => this.collectImageNodes(child, vectorIds, imageIds, videoIds, depth + 1));
     }
   }
   
@@ -175,6 +253,29 @@ class MCPCompiler {
   
   getSvgContent(nodeId) {
     return this.svgContent[nodeId] || null;
+  }
+  
+  getVideoUrl(nodeId) {
+    return this.videoUrls[nodeId] || null;
+  }
+  
+  hasVideoFill(node) {
+    // Check for explicit VIDEO fill or if we have a video URL for this node
+    return node.fills?.some(f => f.type === 'VIDEO' && f.visible !== false) || 
+           this.videoUrls[node.id] !== undefined;
+  }
+  
+  findNodeById(rootNode, nodeId) {
+    if (!rootNode) return null;
+    if (rootNode.id === nodeId) return rootNode;
+    
+    if (rootNode.children && Array.isArray(rootNode.children)) {
+      for (const child of rootNode.children) {
+        const found = this.findNodeById(child, nodeId);
+        if (found) return found;
+      }
+    }
+    return null;
   }
   
   processSvg(svgCode, className, nodeId, node) {
@@ -378,8 +479,22 @@ ${indent}</div>`;
         break;
         
       case 'RECTANGLE':
-        const rectStyle = this.translateRectangleStyle(node, parentHasAutoLayout);
-        html = `${indent}<div class="${className}" data-figma-id="${node.id}" style="${rectStyle}"></div>`;
+        // Check if this rectangle has a video fill
+        if (this.hasVideoFill(node)) {
+          const videoUrl = this.getVideoUrl(node.id);
+          const videoStyle = this.translateVideoStyle(node, parentHasAutoLayout);
+          // Render as a video container with poster/thumbnail
+          // Note: Figma API only provides thumbnails, not actual video URLs
+          // The actual video URL would need to be provided separately or via MCP local server
+          html = `${indent}<div class="${className} video-container" data-figma-id="${node.id}" data-video-name="${node.name}" style="${videoStyle}; background-image: url('${videoUrl}'); background-size: cover; background-position: center; position: relative;">
+${indent}  <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 48px; height: 48px; background: rgba(0,0,0,0.6); border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+${indent}    <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>
+${indent}  </div>
+${indent}</div>`;
+        } else {
+          const rectStyle = this.translateRectangleStyle(node, parentHasAutoLayout);
+          html = `${indent}<div class="${className}" data-figma-id="${node.id}" style="${rectStyle}"></div>`;
+        }
         break;
         
       case 'TEXT':
@@ -543,6 +658,43 @@ ${indent}</div>`;
     
     // For complex vectors rendered as SVG images
     styles.push('object-fit: contain');
+    
+    return styles.join('; ');
+  }
+  
+  translateVideoStyle(node, parentHasAutoLayout = false) {
+    const styles = [];
+    const bbox = node.absoluteBoundingBox;
+    const sizingH = node.layoutSizingHorizontal || 'FIXED';
+    const sizingV = node.layoutSizingVertical || 'FIXED';
+    
+    // Width
+    if (sizingH === 'FILL') {
+      styles.push('flex: 1');
+      styles.push('width: 100%');
+    } else if (sizingH === 'HUG') {
+      // Don't set width
+    } else if (bbox) {
+      styles.push(`width: ${this.round(bbox.width)}px`);
+    }
+    
+    // Height
+    if (sizingV === 'FILL') {
+      styles.push('flex-grow: 1');
+      styles.push('height: 100%');
+    } else if (sizingV === 'HUG') {
+      // Don't set height
+    } else if (bbox) {
+      styles.push(`height: ${this.round(bbox.height)}px`);
+    }
+    
+    // Video should cover the container
+    styles.push('object-fit: cover');
+    
+    // Corner radius
+    if (node.cornerRadius) {
+      styles.push(`border-radius: ${this.round(node.cornerRadius)}px`);
+    }
     
     return styles.join('; ');
   }
