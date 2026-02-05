@@ -1075,80 +1075,207 @@ ${indent}</div>`;
     <script src="https://unpkg.com/@lottiefiles/dotlottie-wc@latest/dist/dotlottie-wc.js" type="module"></script>
     <title>Figma MCP Compiler</title>
     <style>
+        * {
+            box-sizing: border-box;
+        }
+        
         body {
             margin: 0;
-            padding: 20px;
+            padding: 16px;
             font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-            background-color: #f5f5f5;
+            background-color: white;
         }
         
         .container {
+            display: flex;
+            flex-direction: column;
+            gap: 16px;
+        }
+        
+        .header-title {
+            font-size: 24px;
+            font-weight: 700;
+            letter-spacing: -0.25px;
+            line-height: 1.3;
+            margin: 0;
+            color: #1e1e1e;
+        }
+        
+        .toolbar {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 16px;
+            flex-wrap: wrap;
+        }
+        
+        .file-info {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        
+        .refresh-btn {
+            width: 40px;
+            height: 40px;
+            border: 1px solid #E0E0E0;
+            border-radius: 4px;
             background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
-            padding: 20px;
-            margin-bottom: 20px;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: background 0.2s;
+        }
+        
+        .refresh-btn:hover {
+            background: #f5f5f5;
+        }
+        
+        .refresh-btn svg {
+            width: 20px;
+            height: 20px;
+            color: #C01B1B;
+            transition: transform 0.3s ease;
+        }
+        
+        .refresh-btn.loading svg {
+            animation: spin 1s linear infinite;
+        }
+        
+        @keyframes spin {
+            from { transform: rotate(0deg); }
+            to { transform: rotate(360deg); }
+        }
+        
+        .file-name {
+            font-size: 16px;
+            font-weight: 400;
+            color: #1e1e1e;
+        }
+        
+        .link-input-group {
+            display: flex;
+            align-items: center;
+            gap: 16px;
+        }
+        
+        .url-input {
+            width: 400px;
+            padding: 10px 12px;
+            border: 1px solid #E0E0E0;
+            border-radius: 4px;
+            font-size: 14px;
+            font-family: inherit;
+            color: #666;
+        }
+        
+        .url-input:focus {
+            outline: none;
+            border-color: #1e1e1e;
+        }
+        
+        .load-button {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            background: #1e1e1e;
+            color: white;
+            border: none;
+            padding: 10px 16px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+        }
+        
+        .load-button:hover {
+            background: #333;
+        }
+        
+        .load-button svg {
+            width: 16px;
+            height: 16px;
+        }
+        
+        .output-toggle {
+            display: flex;
+            border-radius: 4px;
+            overflow: hidden;
+            border: 1px solid #C01B1B;
+        }
+        
+        .toggle-btn {
+            padding: 10px 16px;
+            border: none;
+            background: white;
+            cursor: pointer;
+            font-size: 14px;
+            font-weight: 500;
+            color: #1e1e1e;
+            transition: all 0.2s;
+        }
+        
+        .toggle-btn:not(:last-child) {
+            border-right: 1px solid #C01B1B;
+        }
+        
+        .toggle-btn.active {
+            background: #C01B1B;
+            color: white;
+        }
+        
+        .toggle-btn:hover:not(.active) {
+            background: #FEF2F2;
+        }
+        
+        .divider {
+            height: 1px;
+            background: #E0E0E0;
+            width: 100%;
         }
         
         .figma-output {
             background: white;
-            border: 1px solid #ddd;
+            border: 1px solid #E0E0E0;
             border-radius: 4px;
             padding: 20px;
             overflow-x: auto;
         }
         
-        .url-input-group {
-            display: flex;
-            gap: 10px;
-            margin-bottom: 15px;
-            flex-wrap: wrap;
+        .code-output {
+            background: #1e1e1e;
+            color: #d4d4d4;
+            padding: 15px;
+            border-radius: 4px;
+            font-family: 'Monaco', 'Menlo', monospace;
+            font-size: 12px;
+            overflow-x: auto;
+            white-space: pre-wrap;
+            max-height: 500px;
+            overflow-y: auto;
         }
         
-        .url-input {
-            flex: 1;
-            min-width: 300px;
-            padding: 10px 15px;
-            border: 1px solid #ddd;
-            border-radius: 6px;
-            font-size: 14px;
-            font-family: inherit;
-        }
-        
-        .url-input:focus {
-            outline: none;
-            border-color: #0d99ff;
-        }
-        
-        .load-button, .refresh-button {
-            background: #0d99ff;
+        .copy-btn {
+            background: #333;
             color: white;
             border: none;
-            padding: 10px 20px;
-            border-radius: 6px;
+            padding: 6px 12px;
+            border-radius: 4px;
             cursor: pointer;
-            font-size: 14px;
-        }
-        
-        .load-button:hover, .refresh-button:hover {
-            background: #0b7fe0;
-        }
-        
-        .refresh-button {
+            font-size: 12px;
             margin-bottom: 10px;
         }
         
-        .info {
-            color: #666;
-            font-size: 14px;
-            margin-bottom: 10px;
+        .copy-btn:hover {
+            background: #444;
         }
         
         .error-message {
-            color: #e74c3c;
-            background: #fdf2f2;
+            color: #C01B1B;
+            background: #FEF2F2;
             padding: 10px 15px;
-            border-radius: 6px;
+            border-radius: 4px;
             margin-top: 10px;
             display: none;
         }
@@ -1157,30 +1284,82 @@ ${indent}</div>`;
             color: #27ae60;
             background: #f0fdf4;
             padding: 10px 15px;
-            border-radius: 6px;
+            border-radius: 4px;
             margin-top: 10px;
             display: none;
+        }
+        
+        h3 {
+            margin: 0 0 10px 0;
+            font-size: 16px;
+            font-weight: 600;
+        }
+        
+        h4 {
+            margin: 15px 0 10px 0;
+            font-size: 14px;
+            font-weight: 600;
         }
     </style>
 </head>
 <body>
     <div class="container">
-        <h1>Figma MCP Compiler</h1>
+        <h1 class="header-title">FIGMA MCP COMPILER</h1>
         
-        <div class="url-input-group">
-            <input type="text" class="url-input" id="figmaUrl" placeholder="Paste Figma URL here..." value="${currentUrl}">
-            <button class="load-button" onclick="loadFromFigma()">📂 Load</button>
+        <div class="toolbar">
+            <div class="file-info">
+                <button class="refresh-btn" onclick="refreshFromFigma()" title="Refresh">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M1 4v6h6M23 20v-6h-6"/>
+                        <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15"/>
+                    </svg>
+                </button>
+                <span class="file-name">File: ${figmaData.name || 'Untitled'}</span>
+            </div>
+            
+            <div class="link-input-group">
+                <input type="text" class="url-input" id="figmaUrl" placeholder="Figma design link" value="${currentUrl}">
+                <button class="load-button" onclick="loadFromFigma()">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <rect x="2" y="3" width="20" height="14" rx="2" ry="2"/>
+                        <line x1="8" y1="21" x2="16" y2="21"/>
+                        <line x1="12" y1="17" x2="12" y2="21"/>
+                    </svg>
+                    Load
+                </button>
+            </div>
+            
+            <div class="output-toggle">
+                <button class="toggle-btn active" onclick="setOutputMode('preview')" id="btn-preview">Preview</button>
+                <button class="toggle-btn" onclick="setOutputMode('html')" id="btn-html">HTML/CSS</button>
+                <button class="toggle-btn" onclick="setOutputMode('react')" id="btn-react">React</button>
+            </div>
         </div>
         
-        <div class="info">File: ${figmaData.name || 'Untitled'}</div>
-        <button class="refresh-button" onclick="refreshFromFigma()">🔄 Refresh</button>
-        <div class="info">Auto Layout → CSS Flexbox Translation</div>
+        <div class="divider"></div>
         
         <div id="errorMsg" class="error-message"></div>
         <div id="successMsg" class="success-message"></div>
         
-        <h3>Rendered Design:</h3>
-        <div class="figma-output">${renderedHTML}</div>
+        <!-- Preview Mode -->
+        <div id="output-preview">
+            <div class="figma-output">${renderedHTML}</div>
+        </div>
+        
+        <!-- HTML/CSS Code Mode -->
+        <div id="output-html" style="display: none;">
+            <button class="copy-btn" onclick="copyCode('html')">📋 Copy HTML</button>
+            <pre class="code-output" id="html-code"></pre>
+        </div>
+        
+        <!-- React Code Mode -->
+        <div id="output-react" style="display: none;">
+            <button class="copy-btn" onclick="copyCode('react')">📋 Copy React</button>
+            <button class="copy-btn" onclick="copyCode('css')" style="margin-left: 5px;">📋 Copy CSS Module</button>
+            <pre class="code-output" id="react-code"></pre>
+            <h4>CSS Module (styles.module.css):</h4>
+            <pre class="code-output" id="css-module-code"></pre>
+        </div>
     </div>
     
     <script>
@@ -1226,12 +1405,12 @@ ${indent}</div>`;
         }
         
         async function refreshFromFigma() {
-            const button = document.querySelector('.refresh-button');
+            const button = document.querySelector('.refresh-btn');
             const errorMsg = document.getElementById('errorMsg');
             const successMsg = document.getElementById('successMsg');
             
             button.disabled = true;
-            button.textContent = '🔄 Syncing...';
+            button.classList.add('loading');
             errorMsg.style.display = 'none';
             successMsg.style.display = 'none';
             
@@ -1245,13 +1424,13 @@ ${indent}</div>`;
                     errorMsg.textContent = 'Refresh failed: ' + data.error;
                     errorMsg.style.display = 'block';
                     button.disabled = false;
-                    button.textContent = '🔄 Refresh';
+                    button.classList.remove('loading');
                 }
             } catch (error) {
                 errorMsg.textContent = 'Refresh failed: ' + error.message;
                 errorMsg.style.display = 'block';
                 button.disabled = false;
-                button.textContent = '🔄 Refresh';
+                button.classList.remove('loading');
             }
         }
         
@@ -1259,6 +1438,155 @@ ${indent}</div>`;
         document.getElementById('figmaUrl').addEventListener('keypress', function(e) {
             if (e.key === 'Enter') loadFromFigma();
         });
+        
+        // Output mode switching
+        let currentMode = 'preview';
+        
+        function setOutputMode(mode) {
+            currentMode = mode;
+            
+            // Update button states
+            document.querySelectorAll('.toggle-btn').forEach(btn => btn.classList.remove('active'));
+            document.getElementById('btn-' + mode).classList.add('active');
+            
+            // Show/hide output containers
+            document.getElementById('output-preview').style.display = mode === 'preview' ? 'block' : 'none';
+            document.getElementById('output-html').style.display = mode === 'html' ? 'block' : 'none';
+            document.getElementById('output-react').style.display = mode === 'react' ? 'block' : 'none';
+            
+            // Generate code when switching to code modes
+            if (mode === 'html') {
+                generateHTMLCode();
+            } else if (mode === 'react') {
+                generateReactCode();
+            }
+        }
+        
+        function generateHTMLCode() {
+            const figmaOutput = document.querySelector('.figma-output');
+            const htmlCode = figmaOutput.innerHTML;
+            document.getElementById('html-code').textContent = formatHTML(htmlCode);
+        }
+        
+        function generateReactCode() {
+            const figmaOutput = document.querySelector('.figma-output');
+            const htmlCode = figmaOutput.innerHTML;
+            
+            // Convert HTML to React JSX
+            const { jsx, cssModule, componentName } = htmlToReact(htmlCode);
+            
+            document.getElementById('react-code').textContent = jsx;
+            document.getElementById('css-module-code').textContent = cssModule;
+        }
+        
+        function htmlToReact(html) {
+            const componentName = 'FigmaComponent';
+            const styles = new Map();
+            let styleIndex = 0;
+            
+            // Parse HTML and extract inline styles
+            let jsx = html
+                // Convert class to className
+                .replace(/\\bclass="/g, 'className="')
+                // Convert data-figma-id to dataFigmaId
+                .replace(/data-figma-id="/g, 'data-figma-id="')
+                // Convert style strings to CSS module references
+                .replace(/style="([^"]*)"/g, (match, styleStr) => {
+                    if (!styleStr.trim()) return '';
+                    
+                    // Generate a unique style name
+                    const styleName = 'style' + (styleIndex++);
+                    
+                    // Parse inline styles to CSS
+                    const cssProps = styleStr.split(';')
+                        .filter(s => s.trim())
+                        .map(s => {
+                            const [prop, val] = s.split(':').map(x => x.trim());
+                            if (!prop || !val) return '';
+                            // Convert camelCase CSS properties
+                            const cssProp = prop.replace(/([A-Z])/g, '-$1').toLowerCase();
+                            return '  ' + cssProp + ': ' + val + ';';
+                        })
+                        .filter(Boolean)
+                        .join('\\n');
+                    
+                    styles.set(styleName, cssProps);
+                    return 'className={styles.' + styleName + '}';
+                })
+                // Handle self-closing tags
+                .replace(/<(img|input|br|hr)([^>]*)>/g, '<$1$2 />')
+                // Fix boolean attributes
+                .replace(/\\b(autoplay|loop|muted|playsinline)(?=[\\s>])/g, '$1={true}');
+            
+            // Build CSS module content
+            let cssModule = '/* styles.module.css */\\n\\n';
+            styles.forEach((css, name) => {
+                cssModule += '.' + name + ' {\\n' + css + '\\n}\\n\\n';
+            });
+            
+            // Build React component
+            const reactCode = \`import React from 'react';
+import styles from './styles.module.css';
+
+export default function \${componentName}() {
+  return (
+    <>
+\${indent(jsx, 6)}
+    </>
+  );
+}\`;
+            
+            return { jsx: reactCode, cssModule, componentName };
+        }
+        
+        function indent(str, spaces) {
+            const pad = ' '.repeat(spaces);
+            return str.split('\\n').map(line => pad + line).join('\\n');
+        }
+        
+        function formatHTML(html) {
+            // Simple HTML formatting
+            let formatted = '';
+            let indentLevel = 0;
+            const lines = html.replace(/></g, '>\\n<').split('\\n');
+            
+            lines.forEach(line => {
+                line = line.trim();
+                if (!line) return;
+                
+                // Decrease indent for closing tags
+                if (line.startsWith('</')) {
+                    indentLevel = Math.max(0, indentLevel - 1);
+                }
+                
+                formatted += '  '.repeat(indentLevel) + line + '\\n';
+                
+                // Increase indent for opening tags (not self-closing)
+                if (line.startsWith('<') && !line.startsWith('</') && !line.endsWith('/>') && !line.includes('</')) {
+                    indentLevel++;
+                }
+            });
+            
+            return formatted.trim();
+        }
+        
+        function copyCode(type) {
+            let code = '';
+            if (type === 'html') {
+                code = document.getElementById('html-code').textContent;
+            } else if (type === 'react') {
+                code = document.getElementById('react-code').textContent;
+            } else if (type === 'css') {
+                code = document.getElementById('css-module-code').textContent;
+            }
+            
+            navigator.clipboard.writeText(code).then(() => {
+                const btn = event.target;
+                const originalText = btn.textContent;
+                btn.textContent = '✅ Copied!';
+                setTimeout(() => btn.textContent = originalText, 1500);
+            });
+        }
     </script>
 </body>
 </html>`;
