@@ -344,7 +344,12 @@ class MCPCompiler {
       return '';
     }
     const [start, end] = fill.gradientHandlePositions;
-    const angle = Math.round((Math.atan2(end.y - start.y, end.x - start.x) * 180) / Math.PI);
+    // Convert Figma gradient angle to CSS linear-gradient angle
+    // Figma uses handle positions where atan2 gives mathematical angle (0 = right, counterclockwise)
+    // CSS linear-gradient: 0deg = bottom to top, 90deg = left to right, 180deg = top to bottom
+    // Formula: CSS angle = 90 - math angle (in degrees)
+    const mathAngle = Math.atan2(end.y - start.y, end.x - start.x) * 180 / Math.PI;
+    const angle = Math.round(90 + mathAngle);
     
     const stops = fill.gradientStops?.map(stop => {
       const r = Math.round(stop.color.r * 255);
