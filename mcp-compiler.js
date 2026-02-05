@@ -151,29 +151,33 @@ class MCPCompiler {
           
           for (const [nodeId, url] of Object.entries(imageUrls)) {
             if (url) {
-              // Check if this node is named like a video
               const nodeInfo = this.findNodeById(nodeToScan, nodeId);
-              const isVideoNode = nodeInfo && (
-                nodeInfo.name.toLowerCase().includes('video') ||
-                nodeInfo.name.toLowerCase().includes('.mp4') ||
-                nodeInfo.name.toLowerCase().includes('.webm') ||
-                nodeInfo.name.toLowerCase().includes('.mov')
+              const nodeName = nodeInfo?.name?.toLowerCase() || '';
+              
+              // Check if this is a GIF (by name or file extension)
+              const isGifNode = nodeName.includes('.gif') || nodeName.includes('gif');
+              
+              // Check if this is a video (by name)
+              const isVideoNode = !isGifNode && (
+                nodeName.includes('video') ||
+                nodeName.includes('.mp4') ||
+                nodeName.includes('.webm') ||
+                nodeName.includes('.mov')
               );
               
-              if (isVideoNode) {
-                // For video nodes, we need to check if there's a video asset
-                const imageFill = nodeInfo.fills?.find(f => f.type === 'IMAGE' && f.visible !== false);
-                if (imageFill?.imageRef) {
-                  console.log(`   Checking video asset for imageRef: ${imageFill.imageRef}`);
-                  // Check if the asset URL contains video indicators
-                  const assetUrl = fileAssets[imageFill.imageRef];
-                  if (assetUrl) {
-                    console.log(`   Asset URL: ${assetUrl.substring(0, 100)}...`);
-                  }
-                }
-                // For now, store as video placeholder - we'll need the actual video URL
-                // Figma stores video thumbnails as images, actual video needs different approach
-                this.videoUrls[nodeId] = url; // Use thumbnail for now
+              // Get the original asset URL from file assets (preserves GIF format)
+              const imageFill = nodeInfo?.fills?.find(f => f.type === 'IMAGE' && f.visible !== false);
+              const originalAssetUrl = imageFill?.imageRef ? fileAssets[imageFill.imageRef] : null;
+              
+              if (isGifNode) {
+                // For GIFs, use the original asset URL if available (preserves animation)
+                // Otherwise fall back to the rendered PNG
+                this.gifUrls = this.gifUrls || {};
+                this.gifUrls[nodeId] = originalAssetUrl || url;
+                console.log(`  🎞️  Detected GIF node: ${nodeId}${originalAssetUrl ? ' (using original asset)' : ' (using rendered image)'}`);
+              } else if (isVideoNode) {
+                // For video nodes, store thumbnail
+                this.videoUrls[nodeId] = url;
                 console.log(`  🎬 Detected video node: ${nodeId} (using thumbnail)`);
               } else {
                 this.imageUrls[nodeId] = url;
@@ -259,10 +263,19 @@ class MCPCompiler {
     return this.videoUrls[nodeId] || null;
   }
   
+  getGifUrl(nodeId) {
+    return this.gifUrls?.[nodeId] || null;
+  }
+  
   hasVideoFill(node) {
     // Check for explicit VIDEO fill or if we have a video URL for this node
     return node.fills?.some(f => f.type === 'VIDEO' && f.visible !== false) || 
            this.videoUrls[node.id] !== undefined;
+  }
+  
+  hasGifFill(node) {
+    // Check if we have a GIF URL for this node
+    return this.gifUrls?.[node.id] !== undefined;
   }
   
   findNodeById(rootNode, nodeId) {
@@ -529,13 +542,18 @@ ${indent}</div>`;
         break;
         
       case 'RECTANGLE':
+        // Check if this rectangle has a GIF fill
+        if (this.hasGifFill(node)) {
+          const gifUrl = this.getGifUrl(node.id);
+          const gifStyle = this.translateVideoStyle(node, parentHasAutoLayout);
+          // Render GIF as an img element to preserve animation
+          html = `${indent}<img class="${className}" data-figma-id="${node.id}" src="${gifUrl}" alt="${node.name}" style="${gifStyle}" />`;
+        }
         // Check if this rectangle has a video fill
-        if (this.hasVideoFill(node)) {
+        else if (this.hasVideoFill(node)) {
           const videoUrl = this.getVideoUrl(node.id);
           const videoStyle = this.translateVideoStyle(node, parentHasAutoLayout);
           // Render as a video container with poster/thumbnail
-          // Note: Figma API only provides thumbnails, not actual video URLs
-          // The actual video URL would need to be provided separately or via MCP local server
           html = `${indent}<div class="${className} video-container" data-figma-id="${node.id}" data-video-name="${node.name}" style="${videoStyle}; background-image: url('${videoUrl}'); background-size: cover; background-position: center; position: relative;">
 ${indent}  <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); width: 48px; height: 48px; background: rgba(0,0,0,0.6); border-radius: 50%; display: flex; align-items: center; justify-content: center;">
 ${indent}    <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path d="M8 5v14l11-7z"/></svg>
