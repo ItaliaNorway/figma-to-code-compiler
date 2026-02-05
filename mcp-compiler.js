@@ -546,8 +546,11 @@ ${indent}</div>`;
         if (this.hasGifFill(node)) {
           const gifUrl = this.getGifUrl(node.id);
           const gifStyle = this.translateVideoStyle(node, parentHasAutoLayout);
-          // Render GIF as an img element to preserve animation
-          html = `${indent}<img class="${className}" data-figma-id="${node.id}" src="${gifUrl}" alt="${node.name}" style="${gifStyle}" />`;
+          // Note: Figma API returns static image, not animated GIF
+          // To use animated GIF, provide external URL via data-gif-src attribute
+          html = `${indent}<div class="${className} gif-container" data-figma-id="${node.id}" data-gif-name="${node.name}" style="${gifStyle}; background-image: url('${gifUrl}'); background-size: cover; background-position: center; position: relative;">
+${indent}  <div style="position: absolute; bottom: 4px; right: 4px; padding: 2px 6px; background: rgba(0,0,0,0.6); border-radius: 4px; font-size: 10px; color: white;">GIF</div>
+${indent}</div>`;
         }
         // Check if this rectangle has a video fill
         else if (this.hasVideoFill(node)) {
