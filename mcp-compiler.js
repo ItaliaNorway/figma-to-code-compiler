@@ -522,12 +522,6 @@ class MCPCompiler {
     
     // Check for image and video fills
     if (node.fills && Array.isArray(node.fills)) {
-      // Log all fill types for debugging
-      const fillTypes = node.fills.map(f => f.type).join(', ');
-      if (node.fills.length > 0 && (node.fills.some(f => f.type === 'IMAGE' || f.type === 'VIDEO'))) {
-        console.log(`     Fill types for ${node.name}: [${fillTypes}]`);
-      }
-      
       const imageFill = node.fills.find(f => f.type === 'IMAGE' && f.visible !== false);
       const videoFill = node.fills.find(f => f.type === 'VIDEO' && f.visible !== false);
       
@@ -937,8 +931,34 @@ ${indent}    <svg width="24" height="24" viewBox="0 0 24 24" fill="white"><path 
 ${indent}  </div>
 ${indent}</div>`;
         } else {
-          const rectStyle = this.translateRectangleStyle(node, parentHasAutoLayout);
-          html = `${indent}<div class="${className}" data-figma-id="${node.id}" style="${rectStyle}"></div>`;
+          // Check for IMAGE fill - render as <img> if we have a URL
+          const hasImageFill = node.fills && node.fills.some(f => f.type === 'IMAGE' && f.visible !== false);
+          const imageUrl = this.getImageUrl(node.id);
+          if (hasImageFill && imageUrl) {
+            const imgStyles = [];
+            const sizingH = node.layoutSizingHorizontal || 'FIXED';
+            const sizingV = node.layoutSizingVertical || 'FIXED';
+            const bbox = node.absoluteBoundingBox;
+            if (sizingH === 'FILL') {
+              imgStyles.push('width: 100%');
+            } else if (bbox) {
+              imgStyles.push(`width: ${this.round(bbox.width)}px`);
+            }
+            if (sizingV === 'FILL') {
+              imgStyles.push('height: 100%');
+            } else if (bbox) {
+              imgStyles.push(`height: ${this.round(bbox.height)}px`);
+            }
+            imgStyles.push('object-fit: cover');
+            imgStyles.push('display: block');
+            if (node.cornerRadius) {
+              imgStyles.push(`border-radius: ${this.round(node.cornerRadius)}px`);
+            }
+            html = `${indent}<img class="${className}" data-figma-id="${node.id}" src="${imageUrl}" alt="${node.name}" style="${imgStyles.join('; ')}" />`;
+          } else {
+            const rectStyle = this.translateRectangleStyle(node, parentHasAutoLayout);
+            html = `${indent}<div class="${className}" data-figma-id="${node.id}" style="${rectStyle}"></div>`;
+          }
         }
         break;
         
@@ -993,18 +1013,51 @@ ${indent}</div>`;
       case 'INSTANCE':
       case 'COMPONENT':
         // Component instances - render children or as image
-        const instanceStyle = this.translateAutoLayoutToCSS(node);
-        if (node.children && node.children.length > 0) {
-          const instanceChildren = node.children.map(child => this.translateNodeToHTML(child, depth + 1, nodeHasAutoLayout)).join('\n');
-          html = `${indent}<div class="${className}" data-figma-id="${node.id}" style="${instanceStyle}">
+        // Check if this instance has an IMAGE fill - render as <img> directly
+        // This handles patterns like .Aspect Ratio Spacer where the image is a fill on the instance
+        const instanceHasImageFill = node.fills && node.fills.some(f => f.type === 'IMAGE' && f.visible !== false);
+        const instanceImageUrl = this.getImageUrl(node.id);
+        if (instanceHasImageFill && instanceImageUrl) {
+          const imgStyles = [];
+          const sizingH = node.layoutSizingHorizontal || 'FIXED';
+          const sizingV = node.layoutSizingVertical || 'FIXED';
+          const bbox = node.absoluteBoundingBox;
+          if (sizingH === 'FILL') {
+            imgStyles.push('width: 100%');
+          } else if (bbox) {
+            imgStyles.push(`width: ${this.round(bbox.width)}px`);
+            imgStyles.push('max-width: 100%');
+          }
+          // Calculate aspect ratio from bbox
+          if (bbox && bbox.width && bbox.height) {
+            const ratio = (bbox.width / bbox.height).toFixed(4);
+            imgStyles.push(`aspect-ratio: ${ratio}`);
+          }
+          if (sizingV === 'FILL') {
+            imgStyles.push('height: 100%');
+          } else {
+            imgStyles.push('height: auto');
+          }
+          imgStyles.push('object-fit: cover');
+          imgStyles.push('display: block');
+          if (node.cornerRadius) {
+            imgStyles.push(`border-radius: ${this.round(node.cornerRadius)}px`);
+          }
+          html = `${indent}<img class="${className}" data-figma-id="${node.id}" src="${instanceImageUrl}" alt="${node.name}" style="${imgStyles.join('; ')}" />`;
+        } else {
+          const instanceStyle = this.translateAutoLayoutToCSS(node);
+          if (node.children && node.children.length > 0) {
+            const instanceChildren = node.children.map(child => this.translateNodeToHTML(child, depth + 1, nodeHasAutoLayout)).join('\n');
+            html = `${indent}<div class="${className}" data-figma-id="${node.id}" style="${instanceStyle}">
 ${instanceChildren}
 ${indent}</div>`;
-        } else {
-          const instanceUrl = this.getImageUrl(node.id);
-          if (instanceUrl) {
-            html = `${indent}<img class="${className}" data-figma-id="${node.id}" src="${instanceUrl}" alt="${node.name}" style="${instanceStyle}" />`;
           } else {
-            html = `${indent}<div class="${className}" data-figma-id="${node.id}" style="${instanceStyle}"></div>`;
+            const instanceUrl2 = this.getImageUrl(node.id);
+            if (instanceUrl2) {
+              html = `${indent}<img class="${className}" data-figma-id="${node.id}" src="${instanceUrl2}" alt="${node.name}" style="${instanceStyle}" />`;
+            } else {
+              html = `${indent}<div class="${className}" data-figma-id="${node.id}" style="${instanceStyle}"></div>`;
+            }
           }
         }
         break;
@@ -1986,11 +2039,37 @@ ${indent}</div>`;
     const npmPackage = componentTree?.npmPackage || 'rk-designsystem';
     const codeConnectMappings = componentTree?.codeConnectMappings || {};
     
+    // Map Code Connect names to actual rk-designsystem export names
+    const nameMap = {
+      'Body': 'Paragraph',
+    };
+    
+    // Known exports from rk-designsystem (components only)
+    const knownExports = new Set([
+      'Alert', 'Avatar', 'Badge', 'BadgePosition', 'Breadcrumbs', 'BreadcrumbsItem',
+      'BreadcrumbsLink', 'BreadcrumbsList', 'Button', 'Card', 'CardBlock', 'Carousel',
+      'Checkbox', 'Chip', 'CrossCorner', 'DateInput', 'DatePicker', 'Details', 'Dialog',
+      'Divider', 'Dropdown', 'DropdownButton', 'DropdownHeading', 'DropdownItem',
+      'DropdownList', 'DropdownTrigger', 'DropdownTriggerContext', 'ErrorSummary',
+      'Field', 'FieldCounter', 'FieldDescription', 'Fieldset', 'Footer', 'Header',
+      'Heading', 'Input', 'Label', 'LanguageProvider', 'Link', 'List', 'Pagination',
+      'PaginationButton', 'PaginationItem', 'PaginationList', 'Paragraph', 'Popover',
+      'Radio', 'Search', 'Select', 'SkeletonLoader', 'SkipLink', 'Spinner', 'Suggestion',
+      'Switch', 'Table', 'Tabs', 'Tag', 'Textarea', 'Textfield', 'ToggleGroup', 'Tooltip',
+      'ValidationMessage'
+    ]);
+    
     // Get unique component names from Code Connect mappings
+    // Filter out invalid JS identifiers and non-exported names
     const componentNames = new Set();
+    const originalToExport = {}; // maps original CC name -> actual export name
     for (const mapping of Object.values(codeConnectMappings)) {
-      if (mapping.componentName) {
-        componentNames.add(mapping.componentName);
+      if (!mapping.componentName) continue;
+      if (!/^[a-zA-Z_$]/.test(mapping.componentName)) continue;
+      const exportName = nameMap[mapping.componentName] || mapping.componentName;
+      if (knownExports.has(exportName)) {
+        componentNames.add(exportName);
+        originalToExport[mapping.componentName] = exportName;
       }
     }
     
@@ -1998,10 +2077,18 @@ ${indent}</div>`;
       ? `import { ${Array.from(componentNames).join(', ')} } from '${npmPackage}';`
       : '';
     
-    // Build the component map for runtime lookup
-    const componentMapEntries = Array.from(componentNames)
-      .map(name => `  '${name}': ${name}`)
-      .join(',\n');
+    // Build the component map for runtime lookup (map both original and export names)
+    const componentMapEntries = [];
+    for (const exportName of componentNames) {
+      componentMapEntries.push(`  '${exportName}': ${exportName}`);
+    }
+    // Also map original Code Connect names to the export
+    for (const [original, exportName] of Object.entries(originalToExport)) {
+      if (original !== exportName) {
+        componentMapEntries.push(`  '${original}': ${exportName}`);
+      }
+    }
+    const componentMapStr = componentMapEntries.join(',\n');
     
     return `
 import React from 'react';
@@ -2010,7 +2097,7 @@ ${componentImports}
 
 // Map of component names to actual components
 const ComponentMap = {
-${componentMapEntries}
+${componentMapStr}
 };
 
 // Code Connect mappings from Figma
@@ -2019,9 +2106,6 @@ const codeConnectMappings = ${JSON.stringify(codeConnectMappings)};
 // Map Figma prop values to design system prop values
 function mapFigmaPropsToDesignSystem(componentName, figmaProps) {
   const props = {};
-  
-  // DEBUG: Log the incoming props
-  console.log('[DEBUG] mapFigmaPropsToDesignSystem called for:', componentName, 'with props:', JSON.stringify(figmaProps));
   
   // Size mapping: Figma uses xxlarge/xlarge/large etc, design system uses 2xl/xl/lg etc
   const sizeMap = {
@@ -2071,22 +2155,14 @@ function mapFigmaPropsToDesignSystem(componentName, figmaProps) {
     props.level = 1; // Default to h1, will be overridden below
   }
   
-  // DEBUG: Log the mapped props
-  console.log('[DEBUG] Mapped props for', componentName, ':', JSON.stringify(props));
-  
   return props;
 }
 
 // Hydrate Code Connect components into existing HTML
 function hydrateCodeConnectComponents() {
-  console.log('[DEBUG] Starting hydration with mappings:', JSON.stringify(codeConnectMappings));
   for (const [nodeId, mapping] of Object.entries(codeConnectMappings)) {
     const element = document.querySelector('[data-figma-id="' + nodeId + '"]');
-    if (!element) {
-      console.log('[DEBUG] Element not found for nodeId:', nodeId);
-      continue;
-    }
-    console.log('[DEBUG] Found element for nodeId:', nodeId, '- tagName:', element.tagName, '- componentName:', mapping.componentName);
+    if (!element) continue;
     
     const Component = ComponentMap[mapping.componentName];
     if (!Component) {
@@ -2114,12 +2190,9 @@ function hydrateCodeConnectComponents() {
       }
     }
     
-    console.log('[DEBUG] Rendering', mapping.componentName, 'with final props:', JSON.stringify(props));
-    
     // Copy inline styles from original element to preserve layout
     const originalStyle = element.getAttribute('style') || '';
     const computedStyleBefore = window.getComputedStyle(element);
-    console.log('[DEBUG] Original element font-size before hydration:', computedStyleBefore.fontSize);
     
     // Create wrapper with original element's layout styles
     const wrapper = document.createElement('div');
@@ -2132,17 +2205,6 @@ function hydrateCodeConnectComponents() {
     try {
       const root = createRoot(wrapper);
       root.render(React.createElement(Component, props, textContent || null));
-      
-      // Debug: Check computed styles after a short delay
-      setTimeout(() => {
-        const headingElement = wrapper.querySelector('h1, h2, h3, h4, h5, h6, [data-size]');
-        if (headingElement) {
-          const computedStyleAfter = window.getComputedStyle(headingElement);
-          console.log('[DEBUG] After hydration - element:', headingElement.tagName, '- font-size:', computedStyleAfter.fontSize, '- data-size:', headingElement.getAttribute('data-size'));
-        }
-      }, 100);
-      
-      console.log('✅ Hydrated:', mapping.componentName, 'with mapped props:', props);
     } catch (err) {
       console.error('Failed to hydrate', mapping.componentName, err);
       wrapper.innerHTML = textContent; // Fallback to text
