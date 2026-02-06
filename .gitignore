@@ -16,6 +16,9 @@ output/
 dist/
 build/
 
+# Build artifacts
+.react-preview-entry.jsx
+
 # OS generated files
 .DS_Store
 .DS_Store?

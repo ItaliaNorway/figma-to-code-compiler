@@ -2,14 +2,13 @@
   "name": "figma-mcp-compiler",
   "version": "1.0.0",
   "description": "Figma to HTML/React compiler - mirrors Figma designs in browser with manual sync",
-  "main": "mcp-compiler.js",
+  "main": "index.js",
   "bin": {
-    "figma-compile": "./mcp-compiler.js"
+    "figma-compile": "./index.js"
   },
   "scripts": {
-    "start": "node mcp-compiler.js",
-    "mcp": "node mcp-compiler.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node index.js",
+    "dev": "npx nodemon index.js"
   },
   "keywords": [
     "figma",
@@ -22,7 +21,7 @@
     "real-time",
     "structure-first"
   ],
-  "author": "Your Name",
+  "author": "Italia Norway / Red Cross",
   "license": "MIT",
   "dependencies": {
     "@digdir/designsystemet-react": "^1.11.1",

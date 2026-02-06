@@ -3308,18 +3308,6 @@ ${jsx.split('\n').map(line => '      ' + line).join('\n')}
       }
     });
 
-    // React preview test page (experimental)
-    this.app.get('/test-react', (req, res) => {
-      const fs = require('fs');
-      const path = require('path');
-      const testFile = path.join(__dirname, 'test-react-preview.html');
-      if (fs.existsSync(testFile)) {
-        res.sendFile(testFile);
-      } else {
-        res.status(404).send('Test file not found');
-      }
-    });
-
     // React preview bundle endpoint - serves bundled React components
     this.app.get('/api/react-bundle', async (req, res) => {
       try {
